@@ -221,6 +221,28 @@ function installSmartNavTrigger() {
 }
 
 /**
+ * autoInstallSmartNav_ — [FIX v5.4.002] ติดตั้ง Smart Nav แบบเงียบ (ไม่ถามผู้ใช้)
+ * ถูกเรียกจาก onOpen() — ตรวจสอบว่ามี trigger อยู่แล้วหรือไม่ ถ้าไม่มีค่อยติดตั้ง
+ * แก้ไข Bug: เดิมเรียก autoInstallSmartNav_() แต่ไม่มี function นี้ → Fake Call
+ */
+function autoInstallSmartNav_() {
+  var triggers = ScriptApp.getProjectTriggers();
+  var hasSmartNav = false;
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'handleSelectionChange_') {
+      hasSmartNav = true;
+      break;
+    }
+  }
+  if (!hasSmartNav) {
+    ScriptApp.newTrigger('handleSelectionChange_')
+      .forSpreadsheet(SpreadsheetApp.getActive())
+      .onSelectionChange()
+      .create();
+  }
+}
+
+/**
  * handleSelectionChange_ — [FIX v5.2.016] ฟังก์ชันหลักสำหรับ Smart Navigation
  * ถูกเรียกโดย Installable Trigger (มีสิทธิ์ getUi/alert/toast ครบ)
  */
