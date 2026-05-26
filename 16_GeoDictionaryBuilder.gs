@@ -462,6 +462,10 @@ function invalidateGeoDictCache() {
   logInfo('GeoDictBuilder', 'ล้าง Geo Dictionary Cache เรียบร้อย');
 }
 
+/**
+ * [DEPRECATED v5.4.002] safeAlert_ — ย้ายไป 14_Utils.gs (ชื่อใหม่: safeUiAlert_)
+ * คงไว้เป็น wrapper เพื่อ backward compatibility
+ */
 function safeAlert_(message) {
-  try { SpreadsheetApp.getUi().alert(message); } catch (e) { logInfo('GeoDictBuilder', `[UI Message] ${message}`); }
+  safeUiAlert_(message);
 }

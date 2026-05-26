@@ -447,6 +447,7 @@ function assignMasterUuidIfMissing() {
  * MIGRATION_HybridAliasSystem — ย้ายข้อมูลจาก M_PERSON_ALIAS และ M_PLACE_ALIAS ไปยัง M_ALIAS
  * และเพิ่ม master_uuid ให้ทุก entity ที่ยังไม่มี
  * เรียกจากเมนู: ระบบ > 🔄 Migration: Hybrid Alias System
+ * [FIX v5.4.002] เพิ่ม Time Guard ป้องกัน GAS Timeout (6 นาที)
  */
 function MIGRATION_HybridAliasSystem() {
   var ui = SpreadsheetApp.getUi();
@@ -458,6 +459,8 @@ function MIGRATION_HybridAliasSystem() {
     '3. ย้ายข้อมูลจาก M_PLACE_ALIAS → M_ALIAS\n' +
     '4. ดึงชื่อปลายทางจากชีต SCG ดิบ → M_ALIAS\n\n' +
     'ข้อมูลซ้ำจะถูกข้ามโดยอัตโนมัติ\n\n' +
+    '⚠️ มี Time Guard ป้องกัน Timeout (5 นาที)\n' +
+    'หากข้อมูลเยอะ อาจต้องรันหลายครั้ง\n\n' +
     'พร้อมดำเนินการหรือไม่?',
     ui.ButtonSet.YES_NO
   );
@@ -465,6 +468,8 @@ function MIGRATION_HybridAliasSystem() {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var startTime = new Date();
+  var timeLimit = AI_CONFIG.TIME_LIMIT_MS || (5 * 60 * 1000); // 5 นาที
+  var timedOut = false;
 
   // Step 1: ตรวจสอบ master_uuid
   logInfo('AliasService', 'Step 1: ตรวจสอบ master_uuid...');
@@ -476,53 +481,86 @@ function MIGRATION_HybridAliasSystem() {
 
   var migrateCount = 0;
 
-  // Step 2: ย้าย M_PERSON_ALIAS → M_ALIAS
+  // Step 2: ย้าย M_PERSON_ALIAS → M_ALIAS (พร้อม Time Guard)
   logInfo('AliasService', 'Step 2: ย้าย M_PERSON_ALIAS → M_ALIAS...');
   var personAliasSheet = ss.getSheetByName(SHEET.M_PERSON_ALIAS);
   if (personAliasSheet && personAliasSheet.getLastRow() > 1) {
     var paData = personAliasSheet.getRange(2, 1, personAliasSheet.getLastRow() - 1, SCHEMA[SHEET.M_PERSON_ALIAS].length).getValues();
-    paData.forEach(function(r) {
-      if (!r[PERSON_ALIAS_IDX.ACTIVE_FLAG]) return;
+    for (var paIdx = 0; paIdx < paData.length; paIdx++) {
+      // [FIX v5.4.002] Time Guard — ตรวจทุก 50 แถว
+      if (paIdx % 50 === 0 && new Date() - startTime > timeLimit) {
+        logWarn('AliasService', 'Step 2 Time Guard: หยุดที่แถว ' + paIdx + '/' + paData.length);
+        timedOut = true;
+        break;
+      }
+      var r = paData[paIdx];
+      if (!r[PERSON_ALIAS_IDX.ACTIVE_FLAG]) continue;
       var personId = String(r[PERSON_ALIAS_IDX.PERSON_ID] || '');
       var aliasName = String(r[PERSON_ALIAS_IDX.ALIAS_NAME] || '');
       var matchScore = Number(r[PERSON_ALIAS_IDX.MATCH_SCORE] || 100);
-      if (!personId || !aliasName) return;
+      if (!personId || !aliasName) continue;
 
       var masterUuid = convertPersonIdToUuid(personId);
       if (masterUuid) {
         var result = createGlobalAlias(masterUuid, aliasName, 'PERSON', matchScore, 'V52_LEGACY_MIGRATION');
         if (result) migrateCount++;
       }
-    });
+    }
   }
 
-  // Step 3: ย้าย M_PLACE_ALIAS → M_ALIAS
-  logInfo('AliasService', 'Step 3: ย้าย M_PLACE_ALIAS → M_ALIAS...');
-  var placeAliasSheet = ss.getSheetByName(SHEET.M_PLACE_ALIAS);
-  if (placeAliasSheet && placeAliasSheet.getLastRow() > 1) {
-    var plData = placeAliasSheet.getRange(2, 1, placeAliasSheet.getLastRow() - 1, SCHEMA[SHEET.M_PLACE_ALIAS].length).getValues();
-    plData.forEach(function(r) {
-      if (!r[PLACE_ALIAS_IDX.ACTIVE_FLAG]) return;
-      var placeId = String(r[PLACE_ALIAS_IDX.PLACE_ID] || '');
-      var aliasName = String(r[PLACE_ALIAS_IDX.ALIAS_NAME] || '');
-      var matchScore = Number(r[PLACE_ALIAS_IDX.MATCH_SCORE] || 100);
-      if (!placeId || !aliasName) return;
+  // Step 3: ย้าย M_PLACE_ALIAS → M_ALIAS (พร้อม Time Guard)
+  if (!timedOut) {
+    logInfo('AliasService', 'Step 3: ย้าย M_PLACE_ALIAS → M_ALIAS...');
+    var placeAliasSheet = ss.getSheetByName(SHEET.M_PLACE_ALIAS);
+    if (placeAliasSheet && placeAliasSheet.getLastRow() > 1) {
+      var plData = placeAliasSheet.getRange(2, 1, placeAliasSheet.getLastRow() - 1, SCHEMA[SHEET.M_PLACE_ALIAS].length).getValues();
+      for (var plIdx = 0; plIdx < plData.length; plIdx++) {
+        // [FIX v5.4.002] Time Guard — ตรวจทุก 50 แถว
+        if (plIdx % 50 === 0 && new Date() - startTime > timeLimit) {
+          logWarn('AliasService', 'Step 3 Time Guard: หยุดที่แถว ' + plIdx + '/' + plData.length);
+          timedOut = true;
+          break;
+        }
+        var r2 = plData[plIdx];
+        if (!r2[PLACE_ALIAS_IDX.ACTIVE_FLAG]) continue;
+        var placeId = String(r2[PLACE_ALIAS_IDX.PLACE_ID] || '');
+        var aliasName2 = String(r2[PLACE_ALIAS_IDX.ALIAS_NAME] || '');
+        var matchScore2 = Number(r2[PLACE_ALIAS_IDX.MATCH_SCORE] || 100);
+        if (!placeId || !aliasName2) continue;
 
-      var masterUuid = convertPlaceIdToUuid(placeId);
-      if (masterUuid) {
-        var result = createGlobalAlias(masterUuid, aliasName, 'PLACE', matchScore, 'V52_LEGACY_MIGRATION');
-        if (result) migrateCount++;
+        var masterUuid2 = convertPlaceIdToUuid(placeId);
+        if (masterUuid2) {
+          var result2 = createGlobalAlias(masterUuid2, aliasName2, 'PLACE', matchScore2, 'V52_LEGACY_MIGRATION');
+          if (result2) migrateCount++;
+        }
       }
-    });
+    }
   }
 
-  // Step 4: ดึงชื่อปลายทางจากชีต SCG ดิบ → M_ALIAS
-  logInfo('AliasService', 'Step 4: ดึงชื่อจากชีต SCG ดิบ → M_ALIAS...');
-  var scgCount = populateAliasFromSCGRawData_();
+  // Step 4: ดึงชื่อปลายทางจากชีต SCG ดิบ → M_ALIAS (พร้อม Time Guard)
+  var scgCount = 0;
+  if (!timedOut) {
+    // [FIX v5.4.002] ตรวจเวลาก่อนเริ่ม Step 4
+    if (new Date() - startTime > timeLimit) {
+      logWarn('AliasService', 'Step 4 ข้ามเพราะใกล้ Timeout');
+      timedOut = true;
+    } else {
+      logInfo('AliasService', 'Step 4: ดึงชื่อจากชีต SCG ดิบ → M_ALIAS...');
+      scgCount = populateAliasFromSCGRawData_();
+    }
+  }
 
-  // Step 5: ดึงชื่อจาก FACT_DELIVERY → M_ALIAS
-  logInfo('AliasService', 'Step 5: ดึงชื่อจาก FACT_DELIVERY → M_ALIAS...');
-  var factCount = populateAliasFromFactDelivery_();
+  // Step 5: ดึงชื่อจาก FACT_DELIVERY → M_ALIAS (พร้อม Time Guard)
+  var factCount = 0;
+  if (!timedOut) {
+    if (new Date() - startTime > timeLimit) {
+      logWarn('AliasService', 'Step 5 ข้ามเพราะใกล้ Timeout');
+      timedOut = true;
+    } else {
+      logInfo('AliasService', 'Step 5: ดึงชื่อจาก FACT_DELIVERY → M_ALIAS...');
+      factCount = populateAliasFromFactDelivery_();
+    }
+  }
 
   var elapsedSec = Math.round((new Date() - startTime) / 1000);
   var totalMigrated = migrateCount + scgCount + factCount;
@@ -533,16 +571,18 @@ function MIGRATION_HybridAliasSystem() {
     ' SCG→M_ALIAS:' + scgCount +
     ' FACT→M_ALIAS:' + factCount +
     ' รวม:' + totalMigrated +
+    (timedOut ? ' ⚠️ TIMEOUT' : '') +
     ' (' + elapsedSec + 's)');
 
   ui.alert(
-    '✅ Migration เสร็จสิ้น!\n\n' +
+    (timedOut ? '⚠️ Migration หยุดกลางคัน (Timeout)!\n\n' : '✅ Migration เสร็จสิ้น!\n\n') +
     '• เพิ่ม master_uuid: ' + uuidFixed + ' รายการ\n' +
     '• PersonAlias → M_ALIAS: ' + migrateCount + ' รายการ\n' +
     '• SCG Raw → M_ALIAS: ' + scgCount + ' รายการ\n' +
     '• FACT → M_ALIAS: ' + factCount + ' รายการ\n' +
     '• รวมทั้งหมด: ' + totalMigrated + ' รายการ\n' +
-    '• ใช้เวลา: ' + elapsedSec + ' วินาที'
+    '• ใช้เวลา: ' + elapsedSec + ' วินาที' +
+    (timedOut ? '\n\n💡 กรุณารัน Migration อีกครั้งเพื่อดำเนินการต่อ' : '')
   );
 }
 

@@ -156,6 +156,7 @@ function createDestination(personId, placeId, geoId, lat, lng, deliveryDate) {
 /**
  * updateDestinationStats
  * [FIX v003] โหลดเฉพาะ dest_id + ใช้ DEST_IDX + guard + const now
+ * [FIX v5.4.002] เปลี่ยนจาก row-by-row setValue เป็น batch setValues (Performance)
  */
 function updateDestinationStats(destId, deliveryDate) {
   if (!destId) return;
@@ -180,24 +181,35 @@ function updateDestinationStats(destId, deliveryDate) {
       return;
     }
 
-    // [FIX v003] const now ครั้งเดียว แทนเรียก new Date() 2 ครั้ง
-    const now = new Date();
-
+    // [FIX v5.4.002] Batch write — อ่าน 3 คอลัมน์ แก้ 3 คอลัมน์ ในครั้งเดียว
     const lastSeenCol    = DEST_IDX.LAST_SEEN      + 1;
     const usageCountCol  = DEST_IDX.USAGE_COUNT    + 1;
     const delivDateCol   = DEST_IDX.DELIVERY_DATE  + 1;
 
-    sheet.getRange(targetRow, lastSeenCol).setValue(now);
+    const now = new Date();
+    const currUsageCount = Number(sheet.getRange(targetRow, usageCountCol).getValue()) || 0;
 
-    const curr = Number(sheet.getRange(targetRow, usageCountCol).getValue()) || 0;
-    sheet.getRange(targetRow, usageCountCol).setValue(curr + 1);
+    // สร้าง Array สำหรับ Batch Write (3 คอลัมน์ติดกัน: LAST_SEEN, USAGE_COUNT, DELIVERY_DATE)
+    const minCol = Math.min(lastSeenCol, usageCountCol, delivDateCol);
+    const maxCol = Math.max(lastSeenCol, usageCountCol, delivDateCol);
+    const numCols = maxCol - minCol + 1;
+
+    // อ่านแถวปัจจุบัน
+    const rowData = sheet.getRange(targetRow, minCol, 1, numCols).getValues()[0];
+
+    // แก้ไขค่าที่ต้องการ
+    rowData[lastSeenCol - minCol]    = now;
+    rowData[usageCountCol - minCol]  = currUsageCount + 1;
 
     if (deliveryDate) {
       const safeDate = deliveryDate instanceof Date ? deliveryDate : new Date(deliveryDate);
       if (!isNaN(safeDate.getTime())) {
-        sheet.getRange(targetRow, delivDateCol).setValue(safeDate);
+        rowData[delivDateCol - minCol] = safeDate;
       }
     }
+
+    // Batch Write ทีเดียว
+    sheet.getRange(targetRow, minCol, 1, numCols).setValues([rowData]);
 
     invalidateDestCache_();
 

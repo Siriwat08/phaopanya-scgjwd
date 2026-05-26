@@ -215,13 +215,9 @@ function countActiveRows_(ss, sheetName, statusIdx) {
 }
 
 /**
- * safeUiAlert_ — แสดง alert เฉพาะเมื่อมี UI context
- * [FIX v003] กัน Error เมื่อรันจาก Trigger (เหมือน 16_GeoDictBuilder)
+ * [DEPRECATED v5.4.002] safeUiAlert_ — ย้ายไป 14_Utils.gs แล้ว
+ * คงไว้เป็น wrapper เพื่อ backward compatibility (เรียกของ 14_Utils)
  */
-function safeUiAlert_(message) {
-  try {
-    SpreadsheetApp.getUi().alert(message);
-  } catch (e) {
-    logInfo('ReportService', `[UI Message] ${message.substring(0, 100)}...`);
-  }
+function safeUiAlert_Report_(message) {
+  safeUiAlert_(message);
 }

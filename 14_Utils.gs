@@ -423,3 +423,23 @@ function normalizeInvoiceNo(inv) {
   if (str.endsWith('.0')) str = str.slice(0, -2);
   return str;
 }
+
+/**
+ * safeUiAlert_ — แสดง alert เฉพาะเมื่อมี UI context (trigger-safe)
+ * [NEW v5.4.002] ย้ายมาจาก 13_ReportService.gs + 16_GeoDictionaryBuilder.gs
+ * เพื่อไม่ให้ซ้ำกัน — ฟังก์ชันเดียวกันใช้ได้ทุกโมดูล
+ * @param {string} message - ข้อความที่จะแสดง
+ * @param {string} [title] - หัวข้อ (optional)
+ */
+function safeUiAlert_(message, title) {
+  try {
+    if (title) {
+      SpreadsheetApp.getUi().alert(title, message, SpreadsheetApp.getUi().ButtonSet.OK);
+    } else {
+      SpreadsheetApp.getUi().alert(message);
+    }
+  } catch (e) {
+    // รันจาก Trigger ไม่มี UI context → log เงียบๆ
+    try { logInfo('System', `[UI Message] ${String(message).substring(0, 200)}`); } catch (_) {}
+  }
+}

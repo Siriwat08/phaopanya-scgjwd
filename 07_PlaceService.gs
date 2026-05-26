@@ -633,25 +633,11 @@ function updatePlaceStats(placeId) {
 // ============================================================
 
 /**
- * [NEW v5.2.001] loadCachedGeoRows_ — Memoization loader
+ * [DEPRECATED v5.4.002] loadCachedGeoRows_ — ย้ายไป 16_GeoDictionaryBuilder.gs แล้ว
+ * เวอร์ชันนี้อ่านแค่ 4 คอลัมน์ (เก่า) ขณะที่ 16_GeoDictionaryBuilder อ่าน 16 คอลัมน์ (ใหม่)
+ * GAS global scope ทำให้ชื่อซ้ำกันได้ → เวอร์ชันที่โหลดทีหลังเขียนทับ
+ * แก้โดย: ลบตัวนี้ออก ให้ใช้ของ 16_GeoDictionaryBuilder.gs แทน
  */
-function loadCachedGeoRows_() {
-  if (_GLOBAL_GEO_DICT_CACHE) return _GLOBAL_GEO_DICT_CACHE;
-
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.SYS_TH_GEO);
-  if (!sheet || sheet.getLastRow() < 2) return [];
-
-  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
-  _GLOBAL_GEO_DICT_CACHE = data.map(row => ({
-    postcode:    String(row[TH_GEO_IDX.POSTCODE]     || '').trim(),
-    subDistrict: String(row[TH_GEO_IDX.SUB_DISTRICT] || '').trim(),
-    district:    String(row[TH_GEO_IDX.DISTRICT]     || '').trim(),
-    province:    String(row[TH_GEO_IDX.PROVINCE]     || '').trim(),
-  }));
-
-  return _GLOBAL_GEO_DICT_CACHE;
-}
 
 function loadAllPlaces_() {
   const cacheKey = 'M_PLACE_ALL';
